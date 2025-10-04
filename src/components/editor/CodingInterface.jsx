@@ -189,7 +189,7 @@ const handleRunCode = async () => {
 
   return (
     <div className="flex flex-col h-screen bg-slate-900 text-white">
-      {/* <SecurityBlocker/> */}
+       <SecurityBlocker/> 
       <header className="flex-shrink-0 p-3 border-b border-slate-700 flex justify-between items-center">
         <button
           onClick={() => navigate(-1)}

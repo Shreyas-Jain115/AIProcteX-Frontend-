@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-const API_BASE_URL2 = "http://localhost:5010";
+const API_BASE_URL2 = "https://4qtw866p-5010.inc1.devtunnels.ms";
 
 const UploadImage = () => {
   const [image, setImage] = useState(null);

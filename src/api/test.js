@@ -15,7 +15,7 @@ export const postTests = async (data) =>{
 export const getTests= async () =>{
     try{
         const response = await axiosInstance.get('tests');
-    
+        console.log(response.data);
         return response.data;
     }
     catch(e){
@@ -26,6 +26,7 @@ export const getTests= async () =>{
 
 export const getTestsByid= async (id) =>{
     try{
+        console.log("API CALLED")
         const response = await axiosInstance.get(`tests/${id}`);
         console.log(response.data);
         return response.data;

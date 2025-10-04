@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMainContext } from "../context/AuthContext";
 
 const SecurityBlocker = () => {
   const [counter, setCounter] = useState(0);
@@ -8,14 +9,28 @@ const SecurityBlocker = () => {
   const [alertActive, setAlertActive] = useState(false);
   const [deviceCount, setDeviceCount] = useState(0);
 
-  useEffect(() => {
-    console.log("SecurityBlocker is running...");
+  // ===== import logging API from context =====
+  const { logViolation, violationsCount, violationsLog } = useMainContext();
 
-    const incrementCounter = () => {
+  useEffect(() => {
+    const record = (type, details = {}) => {
       setCounter((prev) => prev + 1);
+      logViolation(type, details);
     };
 
-    // 🔹 Force fullscreen when component mounts
+    const incrementAndAlert = (type, message, details = {}) => {
+      if (!alertActive) {
+        record(type, details);
+        setAlertActive(true);
+        setTimeout(() => {
+          alert(message);
+          setAlertActive(false);
+        }, 100);
+      } else {
+        record(type, details);
+      }
+    };
+
     const requestFullScreen = () => {
       const el = document.documentElement;
       if (el.requestFullscreen) el.requestFullscreen();
@@ -23,105 +38,151 @@ const SecurityBlocker = () => {
       else if (el.msRequestFullscreen) el.msRequestFullscreen();
     };
 
+    // force fullscreen on mount
     requestFullScreen();
 
-    // 🔹 Detect if user exits fullscreen → re-enter
+    // FULLSCREEN CHANGE (with interval logging)
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
+        logViolation("fullscreen_exit", { reason: "fullscreenchange" }, "start");
+        incrementAndAlert(
+          "fullscreen_exit",
+          "⚠ Fullscreen mode is required!",
+          { reason: "fullscreenchange" }
+        );
         requestFullScreen();
-        incrementCounter();
-        alert("⚠ Fullscreen mode is required!");
+      } else {
+        logViolation("fullscreen_exit", { reason: "fullscreenchange" }, "end");
       }
     };
-
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
+    // KEYDOWN: try to detect PrintScreen + combinations
     const blockScreenshotAndRecording = (event) => {
-      if (
-        event.key === "PrintScreen" ||
-        ((event.ctrlKey || event.metaKey) &&
-          event.shiftKey &&
-          ["S", "4", "R", "5"].includes(event.key))
-      ) {
-        event.preventDefault();
-        alert("⚠ Screenshots & Screen Recording are disabled!");
+      const key = event.key || "";
+      const isPrint = key === "PrintScreen";
+      const combo =
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        ["S", "4", "R", "5"].includes(key);
+      if (isPrint || combo) {
+        event.preventDefault?.();
+        incrementAndAlert(
+          "screenshot",
+          "⚠ Screenshots & Screen Recording are disabled!",
+          { key, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey }
+        );
       }
     };
-
     document.addEventListener("keydown", blockScreenshotAndRecording);
 
-    const showAlert = (message) => {
-      if (!alertActive) {
-        setAlertActive(true);
-        incrementCounter();
-        setTimeout(() => {
-          alert(message);
-          setAlertActive(false);
-        }, 100);
-      }
-    };
-
+    // BLOCK COMMON SHORTCUTS (copy/paste etc.)
     const blockShortcuts = (event) => {
-      if ((event.ctrlKey || event.metaKey) && [67, 86, 84].includes(event.keyCode)) {
-        event.preventDefault();
-        showAlert("⚠ Keyboard shortcuts are disabled!");
+      const keyCode = event.keyCode || event.which;
+      if ((event.ctrlKey || event.metaKey) && [67, 86, 88, 84].includes(keyCode)) {
+        event.preventDefault?.();
+        incrementAndAlert(
+          "copy_paste_shortcut",
+          "⚠ Keyboard shortcuts are disabled!",
+          { keyCode }
+        );
       }
     };
     document.addEventListener("keydown", blockShortcuts);
 
-    document.addEventListener("visibilitychange", () => {
-      setWasHidden(document.hidden);
-    });
+    // VISIBILITY CHANGE (with interval logging)
+    const visibilityHandler = () => {
+      const hidden = document.hidden;
+      setWasHidden(hidden);
+      if (hidden) {
+        logViolation("visibility_hidden", { hidden: true }, "start");
+      } else {
+        logViolation("visibility_hidden", { hidden: false }, "end");
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
 
+    // BEFORE UNLOAD
     window.onbeforeunload = (event) => {
+      record("attempt_unload", {});
       event.preventDefault();
       event.returnValue = "Are you sure you want to leave?";
-      incrementCounter();
     };
 
+    // BLUR / FOCUS (App Switch with interval logging)
+    let lostFocus = false;
     const detectAppSwitch = () => {
-      if (!document.hasFocus() && !wasHidden && !alertActive) {
-        setAlertActive(true);
-        incrementCounter();
-        setTimeout(() => {
-          alert("⚠ You switched apps! Please stay on this page.");
-          setAlertActive(false);
-        }, 100);
+      if (!document.hasFocus() && !wasHidden && !alertActive && !lostFocus) {
+        lostFocus = true;
+        logViolation("app_switch", {}, "start");
+        incrementAndAlert(
+          "app_switch",
+          "⚠ You switched apps! Please stay on this page."
+        );
+      } else if (document.hasFocus() && lostFocus) {
+        logViolation("app_switch", {}, "end");
+        lostFocus = false;
       }
     };
     window.addEventListener("blur", detectAppSwitch);
+    window.addEventListener("focus", detectAppSwitch);
 
+    // USB device check
     const detectRemoteAccess = setInterval(() => {
-      navigator.usb.getDevices().then((devices) => {
-        setDeviceCount(devices.length);
-      });
+      if (navigator.usb && typeof navigator.usb.getDevices === "function") {
+        navigator.usb
+          .getDevices()
+          .then((devices) => {
+            setDeviceCount(devices.length);
+            if ((devices.length || 0) > 0) {
+              record("usb_connected", { deviceCount: devices.length });
+            }
+          })
+          .catch(() => {});
+      }
     }, 5000);
 
+    // PREVENT RESIZE (small window)
     const preventResize = () => {
-      if ((window.innerWidth < 800 || window.innerHeight < 600) && !alertActive) {
-        showAlert("⚠ You must keep the window in full size!");
+      if (
+        (window.innerWidth < 800 || window.innerHeight < 600) &&
+        !alertActive
+      ) {
+        incrementAndAlert(
+          "window_resize_small",
+          "⚠ You must keep the window in full size!",
+          { width: window.innerWidth, height: window.innerHeight }
+        );
         requestFullScreen();
       }
     };
     window.addEventListener("resize", preventResize);
 
-    const blockScreenshot = (event) => {
+    // KEYUP PrintScreen fallback
+    const blockScreenshotKeyUp = (event) => {
       if (event.key === "PrintScreen") {
-        event.preventDefault();
-        showAlert("⚠ Screenshots are not allowed!");
+        event.preventDefault?.();
+        incrementAndAlert("screenshot", "⚠ Screenshots are not allowed!", {
+          key: event.key,
+        });
       }
     };
-    document.addEventListener("keyup", blockScreenshot);
+    document.addEventListener("keyup", blockScreenshotKeyUp);
 
+    // Cleanup
     return () => {
       clearInterval(detectRemoteAccess);
       window.removeEventListener("blur", detectAppSwitch);
+      window.removeEventListener("focus", detectAppSwitch);
       window.removeEventListener("resize", preventResize);
       document.removeEventListener("keydown", blockShortcuts);
-      document.removeEventListener("keyup", blockScreenshotAndRecording);
+      document.removeEventListener("keydown", blockScreenshotAndRecording);
+      document.removeEventListener("keyup", blockScreenshotKeyUp);
+      document.removeEventListener("visibilitychange", visibilityHandler);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.onbeforeunload = null;
     };
-  }, [wasHidden, alertActive]);
+  }, [wasHidden, alertActive, logViolation]);
 
   useEffect(() => {
     if (counter > 0 && counter % 4 === 0) {
@@ -138,11 +199,7 @@ const SecurityBlocker = () => {
     }
   };
 
-  return (
-    < >
-   
-    </>
-  );
+  return <></>;
 };
 
 export default SecurityBlocker;

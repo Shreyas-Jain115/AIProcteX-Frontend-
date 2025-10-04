@@ -6,7 +6,7 @@ const BackgroundProctor = forwardRef(
   (
     {
       testId,
-      baseURL = "http://localhost:8080", // absolute origin
+      baseURL = "http://localhost:8080/", // absolute origin
       uploadPath = "/upload",             // or `/api/tests/${testId}/upload`
       debug = true,
     },
