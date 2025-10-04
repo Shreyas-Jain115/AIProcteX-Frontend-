@@ -12,6 +12,7 @@ import TestAttempt from "../components/student/TestAttempt";
 import TestLayout from "../layouts/TestLayout";
 import AuthPage from "../security/login";
 import UploadImage from "../components/student/UploadImage";
+import FinalRiskData from "../components/student/FinalRiskData";
 // import Tests from '../pages/student/Tests';
 // import Results from '../pages/student/Results';
 // import History from '../pages/student/History';
@@ -33,6 +34,7 @@ const StudentRoutes = () => {
         <Route path="tests" element={<MyTests />} />
         <Route path="results" element={<UpcomingTests />} />
         <Route path="tests/:testId" element={<TestDetail />} />
+         <Route path="FinalResult/:testId" element={<FinalRiskData />} />
         <Route path="resources" element={<QuestionBank />} />
 
         <Route
